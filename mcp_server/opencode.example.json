@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "cli-vision": {
+      "type": "local",
+      "command": ["python3", "/home/kit/Documents/Rust/testProject2/mcp_server/tui_qa_server.py"],
+      "enabled": true,
+      "timeout": 10000,
+      "environment": {
+        "CLI_VISION_PATH": "/home/kit/Documents/Rust/testProject2/target/release/cli-vision",
+        "VLM_ENDPOINT": "http://127.0.0.1:8080/v1/chat/completions"
+      }
+    }
+  }
+}
