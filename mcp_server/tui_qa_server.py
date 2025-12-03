@@ -10,6 +10,14 @@ Tools:
   - tui_test: Run a TUI app with inputs, capture & analyze state changes
   - tui_capture: Capture a single screenshot of an app's initial state
   - list_supported_keys: List all supported keyboard inputs
+
+Environment Variables:
+  CLI_VISION_PATH         - Path to cli-vision binary (default: ../target/release/cli-vision)
+  CLI_VISION_VLM_ENDPOINT - VLM API endpoint (default: http://127.0.0.1:8080/v1/chat/completions)
+  CLI_VISION_VLM_MODEL    - VLM model name (default: qwen3)
+  CLI_VISION_DEFAULT_DELAY - Default input delay in ms (default: 150)
+  CLI_VISION_DEFAULT_SIZE  - Default terminal size (default: standard)
+  VLM_ENDPOINT            - Legacy: VLM endpoint (fallback if CLI_VISION_VLM_ENDPOINT not set)
 """
 
 import json
@@ -26,17 +34,30 @@ except ImportError:
     print("Error: mcp package not installed. Install with: pip install mcp", file=sys.stderr)
     sys.exit(1)
 
-# Path to the cli-vision binary (adjust as needed)
+# =============================================================================
+# Configuration from Environment Variables
+# =============================================================================
+
+# Path to the cli-vision binary
 CLI_VISION_PATH = os.environ.get(
     "CLI_VISION_PATH",
     str(Path(__file__).parent.parent / "target" / "release" / "cli-vision")
 )
 
-# Default VLM endpoint
+# VLM endpoint (check new env var first, then legacy)
 DEFAULT_VLM_ENDPOINT = os.environ.get(
-    "VLM_ENDPOINT",
-    "http://127.0.0.1:8080/v1/chat/completions"
+    "CLI_VISION_VLM_ENDPOINT",
+    os.environ.get("VLM_ENDPOINT", "http://127.0.0.1:8080/v1/chat/completions")
 )
+
+# VLM model name
+DEFAULT_VLM_MODEL = os.environ.get("CLI_VISION_VLM_MODEL", "qwen3")
+
+# Default delay between inputs (ms)
+DEFAULT_DELAY_MS = int(os.environ.get("CLI_VISION_DEFAULT_DELAY", "150"))
+
+# Default terminal size
+DEFAULT_SIZE = os.environ.get("CLI_VISION_DEFAULT_SIZE", "standard")
 
 # Create the MCP server
 mcp = FastMCP("cli-vision")
@@ -47,13 +68,14 @@ def tui_test(
     binary: str,
     inputs: str,
     args: Optional[str] = None,
-    delay_ms: int = 150,
+    delay_ms: Optional[int] = None,
     analyze: bool = True,
     output_dir: Optional[str] = None,
     keep: bool = False,
-    size: str = "standard",
+    size: Optional[str] = None,
     prompt: Optional[str] = None,
     step_prompts: Optional[str] = None,
+    vlm_model: Optional[str] = None,
 ) -> dict:
     """
     Run a TUI/CLI application with keyboard inputs and capture state changes.
@@ -74,16 +96,18 @@ def tui_test(
                 - Any single character: a, b, 1, 2, etc.
                 Example: "down,down,enter,escape"
         args: Comma-separated arguments to pass to the binary (e.g., "--headless,--config,foo.yaml")
-        delay_ms: Milliseconds to wait between inputs (default: 150). Increase for slower apps.
+        delay_ms: Milliseconds to wait between inputs. Default from CLI_VISION_DEFAULT_DELAY or 150.
         analyze: Whether to analyze screenshots with vision model (default: True)
-        output_dir: Directory to save screenshots (default: auto-generated in /tmp/cli-vision/)
+        output_dir: Directory to save screenshots (default: auto-generated in session dir)
         keep: Keep screenshots after completion (default: False, auto-cleanup)
-        size: Terminal size - compact (80x24), standard (120x40), large (160x50), xl (200x60), or WxH
+        size: Terminal size - compact (80x24), standard (120x40), large (160x50), xl (200x60), or WxH.
+              Default from CLI_VISION_DEFAULT_SIZE or "standard".
         prompt: Custom analysis prompt for all steps. Use {step} and {input} as placeholders.
                 Example: "Is the {input} button now highlighted? Describe what you see."
         step_prompts: JSON object mapping step numbers to custom prompts for specific steps.
                 Example: '{"0": "Is there a blue button visible?", "2": "Did a dialog open?"}'
                 Step-specific prompts override the general prompt for that step.
+        vlm_model: Model name for VLM. Default from CLI_VISION_VLM_MODEL or "qwen3".
 
     Returns:
         A dictionary with:
@@ -110,14 +134,19 @@ def tui_test(
         - Step 3: "Process details panel opened for 'rcu_gp'"
         - Step 4: "htop exited, terminal returned to shell"
     """
+    # Apply defaults from environment
+    actual_delay = delay_ms if delay_ms is not None else DEFAULT_DELAY_MS
+    actual_size = size if size is not None else DEFAULT_SIZE
+    actual_model = vlm_model if vlm_model is not None else DEFAULT_VLM_MODEL
+
     # Build command - let cli-vision handle session management
     cmd = [
         CLI_VISION_PATH,
         "run",
         "--binary", binary,
         "--inputs", inputs,
-        "--delay", str(delay_ms),
-        "--size", size,
+        "--delay", str(actual_delay),
+        "--size", actual_size,
         "--json",
     ]
 
@@ -135,6 +164,7 @@ def tui_test(
     if analyze:
         cmd.append("--analyze")
         cmd.extend(["--vlm-endpoint", DEFAULT_VLM_ENDPOINT])
+        cmd.extend(["--vlm-model", actual_model])
 
     if prompt:
         cmd.extend(["--prompt", prompt])
@@ -192,7 +222,7 @@ def tui_capture(
     args: Optional[str] = None,
     output_path: Optional[str] = None,
     keep: bool = False,
-    size: str = "standard",
+    size: Optional[str] = None,
 ) -> dict:
     """
     Capture a single screenshot of a TUI/CLI application's initial state.
@@ -204,9 +234,10 @@ def tui_capture(
     Args:
         binary: Path to the TUI/CLI binary to capture
         args: Comma-separated arguments to pass to the binary
-        output_path: Path to save the screenshot (default: auto-generated in /tmp/cli-vision/)
+        output_path: Path to save the screenshot (default: auto-generated in session dir)
         keep: Keep screenshots after completion (default: False, auto-cleanup)
-        size: Terminal size - compact (80x24), standard (120x40), large (160x50), xl (200x60), or WxH
+        size: Terminal size - compact (80x24), standard (120x40), large (160x50), xl (200x60), or WxH.
+              Default from CLI_VISION_DEFAULT_SIZE or "standard".
 
     Returns:
         A dictionary with:
@@ -216,11 +247,13 @@ def tui_capture(
         - width: Image width in pixels
         - height: Image height in pixels
     """
+    actual_size = size if size is not None else DEFAULT_SIZE
+
     cmd = [
         CLI_VISION_PATH,
         "cli",
         "--binary", binary,
-        "--size", size,
+        "--size", actual_size,
     ]
 
     # If output_path specified, use its directory

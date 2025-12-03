@@ -13,7 +13,13 @@ use cli_vision::vlm::{VlmConfig, analyze_image, build_analysis_prompt, check_hea
 #[derive(Parser, Debug)]
 #[command(
     name = "cli-vision",
-    about = "Cross-platform terminal UI testing with PTY capture and vision model analysis"
+    about = "Cross-platform terminal UI testing with PTY capture and vision model analysis",
+    after_help = "ENVIRONMENT VARIABLES:\n\
+        CLI_VISION_VLM_ENDPOINT    VLM API endpoint URL\n\
+        CLI_VISION_VLM_MODEL       VLM model name\n\
+        CLI_VISION_SESSION_DIR     Base directory for sessions\n\
+        CLI_VISION_DEFAULT_DELAY   Default delay between inputs (ms)\n\
+        CLI_VISION_DEFAULT_SIZE    Default terminal size"
 )]
 struct Args {
     #[command(subcommand)]
@@ -28,7 +34,7 @@ enum Commands {
         #[arg(short, long)]
         binary: PathBuf,
 
-        /// Output directory for screenshots (default: auto-generated in /tmp/cli-vision/)
+        /// Output directory for screenshots (default: auto-generated in session dir)
         #[arg(short, long)]
         output: Option<PathBuf>,
 
@@ -37,7 +43,7 @@ enum Commands {
         keep: bool,
 
         /// Terminal size: compact (80x24), standard (120x40), large (160x50), xl (200x60), or WxH
-        #[arg(long, short = 's', default_value = "standard")]
+        #[arg(long, short = 's', env = "CLI_VISION_DEFAULT_SIZE", default_value = "standard")]
         size: String,
 
         /// Arguments to pass to the binary
@@ -60,10 +66,10 @@ enum Commands {
         inputs: String,
 
         /// Delay in milliseconds between inputs
-        #[arg(short, long, default_value = "100")]
+        #[arg(short, long, env = "CLI_VISION_DEFAULT_DELAY", default_value = "100")]
         delay: u64,
 
-        /// Output directory for screenshots (default: auto-generated in /tmp/cli-vision/)
+        /// Output directory for screenshots (default: auto-generated in session dir)
         #[arg(short, long)]
         output: Option<PathBuf>,
 
@@ -76,8 +82,12 @@ enum Commands {
         analyze: bool,
 
         /// VLM endpoint URL
-        #[arg(long, default_value = "http://127.0.0.1:8080/v1/chat/completions")]
+        #[arg(long, env = "CLI_VISION_VLM_ENDPOINT", default_value = "http://127.0.0.1:8080/v1/chat/completions")]
         vlm_endpoint: String,
+
+        /// VLM model name
+        #[arg(long, env = "CLI_VISION_VLM_MODEL", default_value = "qwen3")]
+        vlm_model: String,
 
         /// Custom analysis prompt (use {input} and {step} as placeholders)
         #[arg(long)]
@@ -92,7 +102,7 @@ enum Commands {
         json: bool,
 
         /// Terminal size: compact (80x24), standard (120x40), large (160x50), xl (200x60), or WxH (e.g., 100x30)
-        #[arg(long, short = 's', default_value = "standard")]
+        #[arg(long, short = 's', env = "CLI_VISION_DEFAULT_SIZE", default_value = "standard")]
         size: String,
 
         /// Run with all preset sizes and compare results (useful for finding resize bugs)
@@ -174,6 +184,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             keep,
             analyze,
             vlm_endpoint,
+            vlm_model,
             prompt,
             step_prompts,
             json,
@@ -284,7 +295,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         custom_prompt,
                     );
 
-                    let vlm_config = VlmConfig::new(&vlm_endpoint);
+                    let vlm_config = VlmConfig::new(&vlm_endpoint).model(&vlm_model);
 
                     match analyze_image(&vlm_config, &capture.image_data, &analysis_prompt) {
                         Ok(desc) => Some(desc),

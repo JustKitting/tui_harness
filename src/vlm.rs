@@ -4,6 +4,15 @@
 //! - Streaming responses (no total timeout, activity-based timeout)
 //! - Connection health checks
 //! - Progress callbacks for long-running analysis
+//!
+//! # Configuration
+//!
+//! VLM settings can be configured via environment variables:
+//! - `CLI_VISION_VLM_ENDPOINT`: API endpoint URL
+//! - `CLI_VISION_VLM_MODEL`: Model name
+//! - `CLI_VISION_VLM_MAX_TOKENS`: Max tokens in response
+//! - `CLI_VISION_VLM_TIMEOUT`: Activity timeout (seconds)
+//! - `CLI_VISION_VLM_CONNECT_TIMEOUT`: Connection timeout (seconds)
 
 use base64::Engine;
 use std::io::{BufRead, BufReader};
@@ -12,11 +21,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Default timeout for initial connection (seconds)
-const CONNECTION_TIMEOUT: u64 = 10;
-
-/// Default timeout for inactivity during streaming (seconds)
-const ACTIVITY_TIMEOUT: u64 = 60;
+use crate::config;
 
 /// Result type for VLM operations
 pub type VlmResult<T> = Result<T, VlmError>;
@@ -70,12 +75,13 @@ pub struct VlmConfig {
 
 impl Default for VlmConfig {
     fn default() -> Self {
+        let cfg = config::get();
         Self {
-            endpoint: "http://127.0.0.1:8080/v1/chat/completions".to_string(),
-            model: "qwen3".to_string(),
-            max_tokens: 400,
-            connection_timeout: CONNECTION_TIMEOUT,
-            activity_timeout: ACTIVITY_TIMEOUT,
+            endpoint: cfg.vlm.endpoint.clone(),
+            model: cfg.vlm.model.clone(),
+            max_tokens: cfg.vlm.max_tokens,
+            connection_timeout: cfg.vlm.connect_timeout,
+            activity_timeout: cfg.vlm.activity_timeout,
         }
     }
 }

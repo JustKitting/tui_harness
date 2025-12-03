@@ -4,13 +4,22 @@
 //! - Unique session directories under a global temp location
 //! - Automatic cleanup unless explicitly preserved
 //! - Session metadata tracking
+//!
+//! # Configuration
+//!
+//! The session base directory can be configured via environment variable:
+//! - `CLI_VISION_SESSION_DIR`: Base directory for sessions (default: `/tmp/cli-vision`)
 
 use std::path::PathBuf;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Global base directory for all cli-vision sessions
-const SESSION_BASE_DIR: &str = "/tmp/cli-vision";
+use crate::config;
+
+/// Get the session base directory (configurable via CLI_VISION_SESSION_DIR)
+fn session_base_dir() -> PathBuf {
+    PathBuf::from(&config::get().session.base_dir)
+}
 
 /// A capture session with organized file management
 #[derive(Debug, Clone)]
@@ -29,7 +38,7 @@ impl Session {
     /// Create a new session with a unique ID
     pub fn new() -> Self {
         let id = generate_session_id();
-        let dir = PathBuf::from(SESSION_BASE_DIR).join(&id);
+        let dir = session_base_dir().join(&id);
 
         Self {
             id,
@@ -43,7 +52,7 @@ impl Session {
     pub fn with_name(name: &str) -> Self {
         let timestamp = generate_timestamp_suffix();
         let id = format!("{}_{}", sanitize_name(name), timestamp);
-        let dir = PathBuf::from(SESSION_BASE_DIR).join(&id);
+        let dir = session_base_dir().join(&id);
 
         Self {
             id,
@@ -188,7 +197,7 @@ fn sanitize_name(name: &str) -> String {
 
 /// Clean up old sessions older than the specified duration
 pub fn cleanup_old_sessions(max_age: std::time::Duration) -> std::io::Result<usize> {
-    let base = PathBuf::from(SESSION_BASE_DIR);
+    let base = session_base_dir();
     if !base.exists() {
         return Ok(0);
     }
@@ -220,7 +229,7 @@ pub fn cleanup_old_sessions(max_age: std::time::Duration) -> std::io::Result<usi
 
 /// List all existing sessions
 pub fn list_sessions() -> std::io::Result<Vec<PathBuf>> {
-    let base = PathBuf::from(SESSION_BASE_DIR);
+    let base = session_base_dir();
     if !base.exists() {
         return Ok(Vec::new());
     }
@@ -245,7 +254,7 @@ mod tests {
     fn test_session_new() {
         let session = Session::new();
         assert!(session.id.starts_with("session_"));
-        assert!(session.dir.starts_with(SESSION_BASE_DIR));
+        assert!(session.dir.starts_with(session_base_dir()));
         assert!(!session.keep);
     }
 

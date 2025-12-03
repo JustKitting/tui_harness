@@ -1,1 +1,51 @@
-/target
+# Build artifacts
+/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Debug/Log files
+*.log
+logs.txt
+output.log
+
+# Temporary files and sessions
+/tmp/
+*.tmp
+
+# Generated test outputs
+/snapshots/
+/screenshots/
+/harness_snapshots/
+/run_output/
+
+# Python virtual environments
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+mcp_server/.venv/
+
+# Jujutsu (jj) version control
+.jj/
+
+# Environment files (may contain secrets)
+.env
+.env.local
+.env.*.local
+
+# Editor backups
+*~
+\#*\#
+
+# Cargo lock for libraries (keep for binaries)
+# Cargo.lock  # Commented out - we want to track this for reproducible builds
